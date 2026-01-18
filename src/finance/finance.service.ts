@@ -18,6 +18,7 @@ import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateProvisionDto } from './dto/create-provision.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
 import { MovementType } from './enums/movement-type.enum';
+import { RecordSource } from './enums/record-source.enum';
 import { Balance } from './entities/balance.entity';
 import { Entry } from './entities/entry.entity';
 import { Provision } from './entities/provision.entity';
@@ -104,6 +105,8 @@ export class FinanceService {
       occurredOn: this.normalizeDate(dto.occurredOn),
       description: dto.description,
       notes: dto.notes ?? null,
+      createdByUserId: user.sub,
+      source: RecordSource.Manual,
     });
 
     return this.entriesRepository.save(entry);
@@ -151,6 +154,8 @@ export class FinanceService {
       dueOn: this.normalizeDate(dto.dueOn),
       description: dto.description,
       notes: dto.notes ?? null,
+      createdByUserId: user.sub,
+      source: RecordSource.Manual,
     });
 
     return this.provisionsRepository.save(provision);
@@ -197,6 +202,8 @@ export class FinanceService {
       clientId,
       amount: dto.amount.toFixed(2),
       recordedAt,
+      createdByUserId: user.sub,
+      source: RecordSource.Manual,
     });
 
     return this.balancesRepository.save(balance);
