@@ -1,28 +1,38 @@
 # Fynancee
 
-Plataforma de visao financeira e contabil para controladorias. O foco e dar clareza
-na tomada de decisao com fluxo de caixa diario/mensal, previsao e fechamento por
-periodo.
+> Plataforma de visao financeira e contabil para controladorias.
+
+Fynancee organiza o fluxo de caixa, projecoes e fechamentos para dar clareza
+operacional e apoiar decisoes com dados simples de entender.
 
 ## Visao do produto
 
-- Entrega clareza sobre saldo, projecao e dias criticos.
-- Saldo e sempre liquido em conta.
-- Fluxo considera entradas, saidas e provisoes.
+- Clareza do saldo liquido em conta.
+- Fluxo de caixa diario e mensal com previsao.
 - Fechamento mensal/trimestral com resumo de saude.
+- Base pronta para importacao de dados (futuro CSV).
+
+## Conceitos centrais
+
+- Tenant: a controladoria (organizacao principal).
+- Client: empresa atendida pela controladoria.
+- User: usuario da controladoria ou do cliente.
+- Roles:
+  - Controladoria: owner, admin, analyst
+  - Cliente: client_admin, client_viewer
 
 ## Regras de negocio (base)
 
 - Entradas e saidas compoem o fluxo.
 - Provisoes entram na previsao do caixa.
-- Dia do furo = primeiro dia em que o saldo projetado fica negativo.
+- Dia do furo = primeiro dia com saldo projetado negativo.
 - Fechamento mensal destaca dias de baixo faturamento.
 - Fechamento trimestral indica saude geral.
 
 ## Funcionalidades atuais
 
 - Google OAuth (idToken) + JWT interno.
-- RBAC com papeis de controladoria e cliente.
+- RBAC com escopo por tenant e client.
 - Cadastro de controladoria, clientes e usuarios.
 - Lancamentos financeiros:
   - entries (receitas/despesas)
@@ -31,38 +41,55 @@ periodo.
 - Cashflow diario e mensal com:
   - dayOfCashShort
   - runway (dias/meses sem receita)
-- Fechamento mensal/trimestral com snapshot e status:
+- Fechamento mensal/trimestral com snapshot:
   - healthy, warning, critical
-- Auditoria basica: origem do dado (manual/import) e usuario criador.
+- Auditoria basica:
+  - origem do dado (manual/import)
+  - usuario criador
 
-## Modelo de acesso
+## Fluxo operacional (padrao)
 
-- Tenant = controladoria (base para multi-tenant, mesmo sendo uso interno).
-- Client = empresa atendida.
-- User pode ser controladoria ou cliente.
-- Roles:
-  - Controladoria: owner, admin, analyst
-  - Cliente: client_admin, client_viewer
+1) Bootstrap do owner e da controladoria.
+2) Owner cria usuarios internos (admin/analyst).
+3) Controladoria cria clientes (empresas atendidas).
+4) Controladoria cria usuarios do cliente (opcional).
+5) Entrada de dados:
+   - balances (saldo inicial)
+   - entries (receitas/despesas)
+   - provisions (compromissos futuros)
+6) Visualizacao:
+   - cashflow diario/mensal
+   - fechamento mensal/trimestral
 
-## Rotas principais (resumo)
+## Endpoints principais
 
-- Auth:
-  - POST /v1/auth/google
-  - GET /v1/auth/me
-- Tenants/Users:
-  - POST /v1/tenants
-  - GET /v1/tenants/:tenantId
-  - POST /v1/tenants/:tenantId/users
-- Clients:
-  - POST /v1/tenants/:tenantId/clients
-  - GET /v1/tenants/:tenantId/clients/:clientId
-- Finance:
-  - POST /v1/clients/:clientId/entries
-  - POST /v1/clients/:clientId/provisions
-  - POST /v1/clients/:clientId/balances
-  - GET /v1/clients/:clientId/cashflow
-  - POST /v1/clients/:clientId/closings
-  - GET /v1/clients/:clientId/closings
+Auth:
+- POST /v1/auth/google
+- GET /v1/auth/me
+
+Tenants/Users:
+- POST /v1/tenants
+- GET /v1/tenants/:tenantId
+- POST /v1/tenants/:tenantId/users
+
+Clients:
+- POST /v1/tenants/:tenantId/clients
+- GET /v1/tenants/:tenantId/clients/:clientId
+
+Finance:
+- POST /v1/clients/:clientId/entries
+- POST /v1/clients/:clientId/provisions
+- POST /v1/clients/:clientId/balances
+- GET /v1/clients/:clientId/cashflow
+- POST /v1/clients/:clientId/closings
+- GET /v1/clients/:clientId/closings
+
+## Modelo (visao rapida)
+
+Tenant (Controladoria)
+  |-- Users (owner/admin/analyst)
+  |-- Clients (empresas atendidas)
+        |-- Users (client_admin/client_viewer)
 
 ## Como rodar
 
@@ -70,7 +97,7 @@ periodo.
 npm install
 ```
 
-Crie um arquivo `.env` baseado em `.env.example` e ajuste o banco:
+Crie um arquivo `.env` baseado em `.env.example`:
 
 ```bash
 DB_HOST=localhost
