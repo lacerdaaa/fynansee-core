@@ -1,136 +1,81 @@
-# Fynancee
+   ______                 __
+  / ____/___  _________ _/ /_____  _____
+ / /_  / __ \/ ___/ __ `/ //_/ _ \/ ___/
+/ __/ / /_/ / /  / /_/ / ,< /  __/ /
+/_/    \____/_/   \__,_/_/|_|\___/_/
 
-> Plataforma de visao financeira e contabil para controladorias.
+Fynancee
+========
+Plataforma de visao financeira e contabil para controladorias e seus clientes.
 
-Fynancee organiza o fluxo de caixa, projecoes e fechamentos para dar clareza
-operacional e apoiar decisoes com dados simples de entender.
+Why
+---
+Clareza para decisao: fluxo de caixa com previsao de 6 a 12 meses, destacando
+os dias/meses criticos e o risco de furo de caixa.
 
-## Visao do produto
-
-- Clareza do saldo liquido em conta.
-- Fluxo de caixa diario e mensal com previsao.
-- Fechamento mensal/trimestral com resumo de saude.
-- Base pronta para importacao de dados (futuro CSV).
-
-## Conceitos centrais
-
-- Tenant: a controladoria (organizacao principal).
-- Client: empresa atendida pela controladoria.
-- User: usuario da controladoria ou do cliente.
-- Roles:
-  - Controladoria: owner, admin, analyst
-  - Cliente: client_admin, client_viewer
-
-## Regras de negocio (base)
-
-- Entradas e saidas compoem o fluxo.
-- Provisoes entram na previsao do caixa.
-- Dia do furo = primeiro dia com saldo projetado negativo.
+Business rules (base)
+---------------------
+- Saldo = valor liquido em conta (nao considera impostos aqui).
+- Todas as saidas tem o mesmo peso (pode haver excecoes por negocio).
 - Fechamento mensal destaca dias de baixo faturamento.
-- Fechamento trimestral indica saude geral.
+- Fechamento trimestral avalia saude da empresa.
+- Projecao padrao: 6 meses (configuravel para 12).
 
-## Funcionalidades atuais
+Core concepts
+-------------
+- Tenant: a controladoria (topo da hierarquia).
+- Users: usuarios da controladoria e do cliente.
+- Clients: empresas atendidas pela controladoria.
+- Finance data: entradas, saidas (despesas), provisoes, saldos.
+- Closings: snapshots mensais/trimestrais com resumo e saude.
+- Patrimonial: estoque e reservas (indicadores).
+- Imports: ingestao de CSV em lote (alta escala).
 
-- Google OAuth (idToken) + JWT interno.
-- RBAC com escopo por tenant e client.
-- Cadastro de controladoria, clientes e usuarios.
-- Lancamentos financeiros:
-  - entries (receitas/despesas)
-  - provisions (provisoes futuras)
-  - balances (saldo)
-- Cashflow diario e mensal com:
-  - dayOfCashShort
-  - runway (dias/meses sem receita)
-- Fechamento mensal/trimestral com snapshot:
-  - healthy, warning, critical
-- Auditoria basica:
-  - origem do dado (manual/import)
-  - usuario criador
+Access and auth
+---------------
+- OAuth Google + JWT.
+- RBAC por tipo e funcao.
+  - UserType: controller | client
+  - TenantRole: owner | admin | analyst
+  - ClientRole: client_admin | client_viewer
 
-## Fluxo operacional (padrao)
+Import pipeline (CSV high volume)
+---------------------------------
+1) API recebe CSV, salva no Azure Blob Storage.
+2) API cria import_batch e publica mensagem no RabbitMQ.
+3) Worker consome fila, stream do CSV e grava import_rows em lote.
+4) import_batch atualiza status, headers e contagem de linhas.
 
-1) Bootstrap do owner e da controladoria.
-2) Owner cria usuarios internos (admin/analyst).
-3) Controladoria cria clientes (empresas atendidas).
-4) Controladoria cria usuarios do cliente (opcional).
-5) Entrada de dados:
-   - balances (saldo inicial)
-   - entries (receitas/despesas)
-   - provisions (compromissos futuros)
-6) Visualizacao:
-   - cashflow diario/mensal
-   - fechamento mensal/trimestral
+Local setup
+-----------
+1) Postgres
+2) RabbitMQ (ou outro broker compativel)
+3) Azure Storage (container)
+4) Vars de ambiente (veja `.env.example`)
 
-## Endpoints principais
-
-Auth:
-- POST /v1/auth/google
-- GET /v1/auth/me
-
-Tenants/Users:
-- POST /v1/tenants
-- GET /v1/tenants/:tenantId
-- POST /v1/tenants/:tenantId/users
-
-Clients:
-- POST /v1/tenants/:tenantId/clients
-- GET /v1/tenants/:tenantId/clients/:clientId
-
-Finance:
-- POST /v1/clients/:clientId/entries
-- POST /v1/clients/:clientId/provisions
-- POST /v1/clients/:clientId/balances
-- GET /v1/clients/:clientId/cashflow
-- POST /v1/clients/:clientId/closings
-- GET /v1/clients/:clientId/closings
-
-## Modelo (visao rapida)
-
-Tenant (Controladoria)
-  |-- Users (owner/admin/analyst)
-  |-- Clients (empresas atendidas)
-        |-- Users (client_admin/client_viewer)
-
-## Como rodar
-
+Quickstart
+----------
 ```bash
 npm install
-```
-
-Crie um arquivo `.env` baseado em `.env.example`:
-
-```bash
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=1234
-DB_NAME=postgres
-JWT_SECRET=change-me
-JWT_EXPIRES_IN=1d
-GOOGLE_CLIENT_ID=your-google-client-id
-```
-
-Rode migrations e o bootstrap do owner:
-
-```bash
+cp .env.example .env
 npm run migration:run
-BOOTSTRAP_OWNER_EMAIL=owner@exemplo.com npm run seed:bootstrap
-```
-
-Suba o projeto:
-
-```bash
+npm run seed:bootstrap
 npm run start:dev
 ```
 
-## Scripts uteis
+Worker (import)
+---------------
+```bash
+npm run worker:imports
+```
 
-- `npm run migration:generate -- src/migrations/Nome`
-- `npm run migration:run`
-- `npm run seed:bootstrap`
+Key scripts
+-----------
+- `npm run migration:run` - aplica migrations
+- `npm run seed:bootstrap` - cria tenant + owner inicial
+- `npm run worker:imports` - worker de importacao CSV
 
-## Roadmap (curto)
-
-- Importador CSV (bootstrap de dados).
-- Indicadores de estoque/reservas.
-- Fechamento anual e insights executivos.
+Project status
+--------------
+Base pronta para evoluir regras de negocio e modelos de importacao.
+Proximos passos naturais: mapeamento de colunas CSV e reconciliacao contabilidade.
