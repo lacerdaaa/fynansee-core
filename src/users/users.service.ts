@@ -11,14 +11,29 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+  findAllForTenant(tenantId: string): Promise<User[]> {
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .innerJoin(
+        'user.tenantMemberships',
+        'tenantMembership',
+        'tenantMembership.tenantId = :tenantId AND tenantMembership.isActive = true',
+        { tenantId },
+      )
+      .getMany();
   }
 
-  async findOne(userId: string): Promise<User> {
-    const user = await this.usersRepository.findOne({
-      where: { id: userId },
-    });
+  async findOneInTenant(userId: string, tenantId: string): Promise<User> {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .innerJoin(
+        'user.tenantMemberships',
+        'tenantMembership',
+        'tenantMembership.tenantId = :tenantId AND tenantMembership.isActive = true',
+        { tenantId },
+      )
+      .where('user.id = :userId', { userId })
+      .getOne();
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -27,7 +42,13 @@ export class UsersService {
     return user;
   }
 
-  async updateUser(userId: string, dto: UpdateUserDto): Promise<User> {
+  async updateUser(
+    userId: string,
+    tenantId: string,
+    dto: UpdateUserDto,
+  ): Promise<User> {
+    await this.findOneInTenant(userId, tenantId);
+
     const user = await this.usersRepository.preload({
       id: userId,
       ...dto,

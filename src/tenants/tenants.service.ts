@@ -29,8 +29,12 @@ export class TenantsService {
     return this.tenantsRepository.save(tenant);
   }
 
-  findAll(): Promise<Tenant[]> {
-    return this.tenantsRepository.find();
+  findAllForTenant(tenantId?: string): Promise<Tenant[]> {
+    if (!tenantId) {
+      return this.tenantsRepository.find();
+    }
+
+    return this.tenantsRepository.find({ where: { id: tenantId } });
   }
 
   async findOne(tenantId: string): Promise<Tenant> {

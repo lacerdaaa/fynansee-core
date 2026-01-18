@@ -6,7 +6,13 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { UserType, TenantRole } from '../common/enums/access.enum';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserTypes } from '../auth/decorators/user-types.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AccessGuard } from '../auth/guards/access.guard';
 import { CreateClientDto } from './dto/create-client.dto';
 import { CreateClientUserDto } from './dto/create-client-user.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -14,10 +20,13 @@ import { UpdateClientUserDto } from './dto/update-client-user.dto';
 import { ClientsService } from './clients.service';
 
 @Controller('v1/tenants/:tenantId/clients')
+@UseGuards(JwtAuthGuard, AccessGuard)
+@UserTypes(UserType.Controller)
 export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Post()
+  @Roles(TenantRole.Owner, TenantRole.Admin)
   create(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateClientDto,
@@ -26,11 +35,13 @@ export class ClientsController {
   }
 
   @Get()
+  @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   findAll(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
     return this.clientsService.findAll(tenantId);
   }
 
   @Get(':clientId')
+  @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   findOne(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
@@ -39,6 +50,7 @@ export class ClientsController {
   }
 
   @Patch(':clientId')
+  @Roles(TenantRole.Owner, TenantRole.Admin)
   update(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
@@ -48,6 +60,7 @@ export class ClientsController {
   }
 
   @Get(':clientId/users')
+  @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   listUsers(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
@@ -56,6 +69,7 @@ export class ClientsController {
   }
 
   @Post(':clientId/users')
+  @Roles(TenantRole.Owner, TenantRole.Admin)
   addUser(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
@@ -65,6 +79,7 @@ export class ClientsController {
   }
 
   @Patch(':clientId/users/:userId')
+  @Roles(TenantRole.Owner, TenantRole.Admin)
   updateUser(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
