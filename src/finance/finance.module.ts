@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthGuardsModule } from '../auth/auth-guards.module';
 import { Client } from '../clients/entities/client.entity';
+import { InfraModule } from '../infra/infra.module';
 import { Balance } from './entities/balance.entity';
 import { Closing } from './entities/closing.entity';
 import { Entry } from './entities/entry.entity';
@@ -27,6 +28,7 @@ import { FinanceService } from './finance.service';
       Client,
     ]),
     AuthGuardsModule,
+    InfraModule,
   ],
   controllers: [FinanceController],
   providers: [FinanceService],

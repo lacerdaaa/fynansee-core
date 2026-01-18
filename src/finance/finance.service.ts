@@ -11,7 +11,6 @@ import {
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';
-import { parse } from 'csv-parse/sync';
 import { UserType } from '../common/enums/access.enum';
 import { Client } from '../clients/entities/client.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -27,7 +26,7 @@ import { ListImportsQueryDto } from './dto/list-imports-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { ClosingHealthStatus } from './enums/closing-health.enum';
 import { ClosingPeriodType } from './enums/closing-period.enum';
-import { ImportBatchStatus, ImportRowStatus } from './enums/import-status.enum';
+import { ImportBatchStatus } from './enums/import-status.enum';
 import { MovementType } from './enums/movement-type.enum';
 import { ReserveType } from './enums/reserve-type.enum';
 import { RecordSource } from './enums/record-source.enum';
@@ -39,6 +38,8 @@ import { ImportRow } from './entities/import-row.entity';
 import { Provision } from './entities/provision.entity';
 import { Reserve } from './entities/reserve.entity';
 import { Stock } from './entities/stock.entity';
+import { AzureBlobService } from '../infra/storage/azure-blob.service';
+import { RabbitMqService } from '../infra/queue/rabbitmq.service';
 
 type DailyCashflowItem = {
   date: string;
@@ -75,6 +76,8 @@ export class FinanceService {
     private readonly importRowsRepository: Repository<ImportRow>,
     @InjectRepository(Client)
     private readonly clientsRepository: Repository<Client>,
+    private readonly azureBlobService: AzureBlobService,
+    private readonly rabbitMqService: RabbitMqService,
   ) {}
 
   private async requireClientAccess(
@@ -123,6 +126,10 @@ export class FinanceService {
     if (!fileName || !fileName.endsWith('.csv')) {
       throw new BadRequestException('Only CSV files are supported');
     }
+  }
+
+  private sanitizeFileName(fileName: string): string {
+    return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   }
 
   private normalizeToDate(input: Date): string {
@@ -451,54 +458,50 @@ export class FinanceService {
 
     this.ensureCsvFile(file);
 
-    const maxRows = Number(process.env.IMPORT_MAX_ROWS ?? 5000);
-    const records = parse(file.buffer, {
-      columns: true,
-      skip_empty_lines: true,
-      bom: true,
-      trim: true,
-    }) as Record<string, string>[];
-
-    if (records.length === 0) {
-      throw new BadRequestException('CSV has no data rows');
-    }
-
-    if (records.length > maxRows) {
-      throw new BadRequestException('CSV exceeds row limit');
-    }
-
-    const headers = Object.keys(records[0] ?? {});
-
     const batch = this.importBatchesRepository.create({
       clientId,
       fileName: file.originalname,
-      headers,
-      rowCount: records.length,
+      headers: [],
+      rowCount: 0,
       errorCount: 0,
       status: ImportBatchStatus.Uploaded,
       createdByUserId: user.sub,
     });
 
     const savedBatch = await this.importBatchesRepository.save(batch);
+    const blobName = `${clientId}/${savedBatch.id}/${Date.now()}-${this.sanitizeFileName(file.originalname)}`;
 
-    const rows = records.map((record, index) => ({
-      batchId: savedBatch.id,
-      rowIndex: index + 1,
-      data: record,
-      status: ImportRowStatus.Pending,
-      errors: [],
-    }));
+    try {
+      await this.azureBlobService.uploadBuffer(
+        blobName,
+        file.buffer,
+        file.mimetype ?? 'text/csv',
+      );
 
-    if (rows.length > 0) {
-      await this.importRowsRepository.insert(rows);
+      await this.importBatchesRepository.update(savedBatch.id, {
+        storageKey: blobName,
+      });
+
+      await this.rabbitMqService.publishImportJob({
+        batchId: savedBatch.id,
+        clientId,
+        storageKey: blobName,
+      });
+
+      return {
+        batchId: savedBatch.id,
+        rowCount: savedBatch.rowCount,
+        headers: savedBatch.headers,
+        status: savedBatch.status,
+        storageKey: blobName,
+      };
+    } catch (error) {
+      await this.importBatchesRepository.update(savedBatch.id, {
+        status: ImportBatchStatus.Failed,
+      });
+
+      throw error;
     }
-
-    return {
-      batchId: savedBatch.id,
-      rowCount: savedBatch.rowCount,
-      headers: savedBatch.headers,
-      status: savedBatch.status,
-    };
   }
 
   async listImports(

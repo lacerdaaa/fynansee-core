@@ -34,6 +34,10 @@ import { ListImportsQueryDto } from './dto/list-imports-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { FinanceService } from './finance.service';
 
+const MAX_IMPORT_FILE_SIZE = Number(
+  process.env.IMPORT_MAX_FILE_SIZE ?? 50_000_000,
+);
+
 @Controller('v1/clients/:clientId')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @UserTypes(UserType.Controller, UserType.Client)
@@ -205,7 +209,9 @@ export class FinanceController {
   }
 
   @Post('imports/csv')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5_000_000 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_IMPORT_FILE_SIZE } }),
+  )
   @Roles(
     TenantRole.Owner,
     TenantRole.Admin,
@@ -216,7 +222,9 @@ export class FinanceController {
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 5_000_000 })],
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_IMPORT_FILE_SIZE }),
+        ],
       }),
     )
     file: Express.Multer.File,

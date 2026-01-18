@@ -22,9 +22,11 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d ./src/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d ./src/data-source.ts",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
-    "seed:bootstrap": "node -r ts-node/register -r tsconfig-paths/register ./src/scripts/bootstrap-owner.ts"
+    "seed:bootstrap": "node -r ts-node/register -r tsconfig-paths/register ./src/scripts/bootstrap-owner.ts",
+    "worker:imports": "node -r ts-node/register -r tsconfig-paths/register ./src/worker/import-worker.ts"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.30.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -33,6 +35,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/typeorm": "^11.0.0",
     "@types/passport-jwt": "^4.0.1",
+    "amqplib": "^0.10.9",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "csv-parse": "^6.1.0",
@@ -51,6 +54,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/amqplib": "^0.10.8",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",

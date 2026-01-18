@@ -17,6 +17,9 @@ export class ImportBatch extends AppBaseEntity {
   @Column({ type: 'varchar', length: 255 })
   fileName: string;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  storageKey?: string | null;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   headers: string[];
 
