@@ -21,6 +21,8 @@ import { CreateBalanceDto } from './dto/create-balance.dto';
 import { CreateClosingDto } from './dto/create-closing.dto';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateProvisionDto } from './dto/create-provision.dto';
+import { CreateReserveDto } from './dto/create-reserve.dto';
+import { CreateStockDto } from './dto/create-stock.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { FinanceService } from './finance.service';
@@ -116,6 +118,83 @@ export class FinanceController {
     @Req() req: Request & { user: JwtPayload },
   ) {
     return this.financeService.listBalances(clientId, req.user);
+  }
+
+  @Post('stocks')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+  )
+  createStock(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Body() dto: CreateStockDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.createStock(clientId, req.user, dto);
+  }
+
+  @Get('stocks')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  listStocks(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Query() query: DateRangeQueryDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.listStocks(clientId, req.user, query);
+  }
+
+  @Post('reserves')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+  )
+  createReserve(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Body() dto: CreateReserveDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.createReserve(clientId, req.user, dto);
+  }
+
+  @Get('reserves')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  listReserves(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Query() query: DateRangeQueryDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.listReserves(clientId, req.user, query);
+  }
+
+  @Get('indicators')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  getIndicators(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.getIndicators(clientId, req.user);
   }
 
   @Get('cashflow')

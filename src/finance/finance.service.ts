@@ -17,16 +17,21 @@ import { CreateBalanceDto } from './dto/create-balance.dto';
 import { CreateClosingDto } from './dto/create-closing.dto';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateProvisionDto } from './dto/create-provision.dto';
+import { CreateReserveDto } from './dto/create-reserve.dto';
+import { CreateStockDto } from './dto/create-stock.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { ClosingHealthStatus } from './enums/closing-health.enum';
 import { ClosingPeriodType } from './enums/closing-period.enum';
 import { MovementType } from './enums/movement-type.enum';
+import { ReserveType } from './enums/reserve-type.enum';
 import { RecordSource } from './enums/record-source.enum';
 import { Balance } from './entities/balance.entity';
 import { Closing } from './entities/closing.entity';
 import { Entry } from './entities/entry.entity';
 import { Provision } from './entities/provision.entity';
+import { Reserve } from './entities/reserve.entity';
+import { Stock } from './entities/stock.entity';
 
 type DailyCashflowItem = {
   date: string;
@@ -53,6 +58,10 @@ export class FinanceService {
     private readonly balancesRepository: Repository<Balance>,
     @InjectRepository(Closing)
     private readonly closingsRepository: Repository<Closing>,
+    @InjectRepository(Reserve)
+    private readonly reservesRepository: Repository<Reserve>,
+    @InjectRepository(Stock)
+    private readonly stocksRepository: Repository<Stock>,
     @InjectRepository(Client)
     private readonly clientsRepository: Repository<Client>,
   ) {}
@@ -100,6 +109,18 @@ export class FinanceService {
 
   private normalizeToDate(input: Date): string {
     return this.normalizeDate(input.toISOString());
+  }
+
+  private startOfDay(input: string): Date {
+    const date = new Date(input);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  private endOfDay(input: string): Date {
+    const date = new Date(input);
+    date.setHours(23, 59, 59, 999);
+    return date;
   }
 
   private getPeriodRange(
@@ -249,6 +270,154 @@ export class FinanceService {
       where: { clientId },
       order: { recordedAt: 'DESC' },
     });
+  }
+
+  async createStock(
+    clientId: string,
+    user: JwtPayload,
+    dto: CreateStockDto,
+  ): Promise<Stock> {
+    await this.requireClientAccess(clientId, user);
+
+    const recordedAt = dto.recordedAt
+      ? new Date(dto.recordedAt)
+      : new Date();
+
+    const stock = this.stocksRepository.create({
+      clientId,
+      value: dto.value.toFixed(2),
+      recordedAt,
+      notes: dto.notes ?? null,
+      createdByUserId: user.sub,
+      source: RecordSource.Manual,
+    });
+
+    return this.stocksRepository.save(stock);
+  }
+
+  async listStocks(
+    clientId: string,
+    user: JwtPayload,
+    query: DateRangeQueryDto,
+  ): Promise<Stock[]> {
+    await this.requireClientAccess(clientId, user);
+
+    const where: Record<string, unknown> = { clientId };
+
+    if (query.startDate && query.endDate) {
+      where.recordedAt = Between(
+        this.startOfDay(query.startDate),
+        this.endOfDay(query.endDate),
+      );
+    } else if (query.startDate) {
+      where.recordedAt = MoreThanOrEqual(this.startOfDay(query.startDate));
+    } else if (query.endDate) {
+      where.recordedAt = LessThanOrEqual(this.endOfDay(query.endDate));
+    }
+
+    return this.stocksRepository.find({
+      where,
+      order: { recordedAt: 'DESC' },
+    });
+  }
+
+  async createReserve(
+    clientId: string,
+    user: JwtPayload,
+    dto: CreateReserveDto,
+  ): Promise<Reserve> {
+    await this.requireClientAccess(clientId, user);
+
+    const recordedAt = dto.recordedAt
+      ? new Date(dto.recordedAt)
+      : new Date();
+
+    const reserve = this.reservesRepository.create({
+      clientId,
+      type: dto.type,
+      value: dto.value.toFixed(2),
+      recordedAt,
+      label: dto.label ?? null,
+      notes: dto.notes ?? null,
+      createdByUserId: user.sub,
+      source: RecordSource.Manual,
+    });
+
+    return this.reservesRepository.save(reserve);
+  }
+
+  async listReserves(
+    clientId: string,
+    user: JwtPayload,
+    query: DateRangeQueryDto,
+  ): Promise<Reserve[]> {
+    await this.requireClientAccess(clientId, user);
+
+    const where: Record<string, unknown> = { clientId };
+
+    if (query.startDate && query.endDate) {
+      where.recordedAt = Between(
+        this.startOfDay(query.startDate),
+        this.endOfDay(query.endDate),
+      );
+    } else if (query.startDate) {
+      where.recordedAt = MoreThanOrEqual(this.startOfDay(query.startDate));
+    } else if (query.endDate) {
+      where.recordedAt = LessThanOrEqual(this.endOfDay(query.endDate));
+    }
+
+    return this.reservesRepository.find({
+      where,
+      order: { recordedAt: 'DESC' },
+    });
+  }
+
+  async getIndicators(clientId: string, user: JwtPayload) {
+    await this.requireClientAccess(clientId, user);
+
+    const [latestStock, latestReserve, latestInvestment] = await Promise.all([
+      this.stocksRepository.findOne({
+        where: { clientId },
+        order: { recordedAt: 'DESC' },
+      }),
+      this.reservesRepository.findOne({
+        where: { clientId, type: ReserveType.Reserve },
+        order: { recordedAt: 'DESC' },
+      }),
+      this.reservesRepository.findOne({
+        where: { clientId, type: ReserveType.Investment },
+        order: { recordedAt: 'DESC' },
+      }),
+    ]);
+
+    const stockValue = latestStock ? this.parseAmount(latestStock.value) : 0;
+    const reserveValue = latestReserve
+      ? this.parseAmount(latestReserve.value)
+      : 0;
+    const investmentValue = latestInvestment
+      ? this.parseAmount(latestInvestment.value)
+      : 0;
+    const reservesTotal = reserveValue + investmentValue;
+
+    return {
+      clientId,
+      stock: {
+        value: stockValue,
+        recordedAt: latestStock?.recordedAt ?? null,
+      },
+      reserves: {
+        reserve: {
+          value: reserveValue,
+          recordedAt: latestReserve?.recordedAt ?? null,
+        },
+        investment: {
+          value: investmentValue,
+          recordedAt: latestInvestment?.recordedAt ?? null,
+        },
+        total: reservesTotal,
+      },
+      totalAssets: stockValue + reservesTotal,
+    };
   }
 
   async getCashflow(
