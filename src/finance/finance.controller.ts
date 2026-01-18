@@ -18,9 +18,11 @@ import { AccessGuard } from '../auth/guards/access.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CashflowQueryDto } from './dto/cashflow-query.dto';
 import { CreateBalanceDto } from './dto/create-balance.dto';
+import { CreateClosingDto } from './dto/create-closing.dto';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateProvisionDto } from './dto/create-provision.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { FinanceService } from './finance.service';
 
 @Controller('v1/clients/:clientId')
@@ -134,5 +136,36 @@ export class FinanceController {
       req.user,
       query.months ?? 6,
     );
+  }
+
+  @Post('closings')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+  )
+  createClosing(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Body() dto: CreateClosingDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.createClosing(clientId, req.user, dto);
+  }
+
+  @Get('closings')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  listClosings(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Query() query: ListClosingsQueryDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.listClosings(clientId, req.user, query);
   }
 }

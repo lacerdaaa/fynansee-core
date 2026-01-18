@@ -14,12 +14,17 @@ import { UserType } from '../common/enums/access.enum';
 import { Client } from '../clients/entities/client.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateBalanceDto } from './dto/create-balance.dto';
+import { CreateClosingDto } from './dto/create-closing.dto';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateProvisionDto } from './dto/create-provision.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
+import { ClosingHealthStatus } from './enums/closing-health.enum';
+import { ClosingPeriodType } from './enums/closing-period.enum';
 import { MovementType } from './enums/movement-type.enum';
 import { RecordSource } from './enums/record-source.enum';
 import { Balance } from './entities/balance.entity';
+import { Closing } from './entities/closing.entity';
 import { Entry } from './entities/entry.entity';
 import { Provision } from './entities/provision.entity';
 
@@ -46,6 +51,8 @@ export class FinanceService {
     private readonly provisionsRepository: Repository<Provision>,
     @InjectRepository(Balance)
     private readonly balancesRepository: Repository<Balance>,
+    @InjectRepository(Closing)
+    private readonly closingsRepository: Repository<Closing>,
     @InjectRepository(Client)
     private readonly clientsRepository: Repository<Client>,
   ) {}
@@ -89,6 +96,29 @@ export class FinanceService {
 
   private applyMovement(type: MovementType, amount: number): number {
     return type === MovementType.Income ? amount : -amount;
+  }
+
+  private normalizeToDate(input: Date): string {
+    return this.normalizeDate(input.toISOString());
+  }
+
+  private getPeriodRange(
+    periodType: ClosingPeriodType,
+    reference: Date,
+  ): { start: Date; end: Date } {
+    const year = reference.getFullYear();
+    const month = reference.getMonth();
+
+    if (periodType === ClosingPeriodType.Quarterly) {
+      const quarterStart = Math.floor(month / 3) * 3;
+      const start = new Date(year, quarterStart, 1);
+      const end = new Date(year, quarterStart + 3, 0);
+      return { start, end };
+    }
+
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    return { start, end };
   }
 
   async createEntry(
@@ -393,5 +423,173 @@ export class FinanceService {
       days,
       months: monthly,
     };
+  }
+
+  async createClosing(
+    clientId: string,
+    user: JwtPayload,
+    dto: CreateClosingDto,
+  ): Promise<Closing> {
+    await this.requireClientAccess(clientId, user);
+
+    const referenceDate = dto.referenceDate
+      ? new Date(dto.referenceDate)
+      : new Date();
+    const { start, end } = this.getPeriodRange(dto.periodType, referenceDate);
+    const periodStart = this.normalizeToDate(start);
+    const periodEnd = this.normalizeToDate(end);
+
+    const [entries, provisions] = await Promise.all([
+      this.entriesRepository.find({
+        where: {
+          clientId,
+          occurredOn: Between(periodStart, periodEnd),
+        },
+      }),
+      this.provisionsRepository.find({
+        where: {
+          clientId,
+          dueOn: Between(periodStart, periodEnd),
+        },
+      }),
+    ]);
+
+    const startingBalanceRecord = await this.balancesRepository.findOne({
+      where: { clientId, recordedAt: LessThanOrEqual(start) },
+      order: { recordedAt: 'DESC' },
+    });
+    const startingBalance = startingBalanceRecord
+      ? this.parseAmount(startingBalanceRecord.amount)
+      : 0;
+
+    const dailyMovements = new Map<string, number>();
+    const dailyIncome = new Map<string, number>();
+    let incomeTotal = 0;
+    let expenseTotal = 0;
+
+    for (const entry of entries) {
+      const amount = this.parseAmount(entry.amount);
+      if (entry.type === MovementType.Income) {
+        incomeTotal += amount;
+        dailyIncome.set(
+          entry.occurredOn,
+          (dailyIncome.get(entry.occurredOn) ?? 0) + amount,
+        );
+      } else {
+        expenseTotal += amount;
+      }
+
+      dailyMovements.set(
+        entry.occurredOn,
+        (dailyMovements.get(entry.occurredOn) ?? 0) +
+          this.applyMovement(entry.type, amount),
+      );
+    }
+
+    for (const provision of provisions) {
+      const amount = this.parseAmount(provision.amount);
+      if (provision.type === MovementType.Income) {
+        incomeTotal += amount;
+        dailyIncome.set(
+          provision.dueOn,
+          (dailyIncome.get(provision.dueOn) ?? 0) + amount,
+        );
+      } else {
+        expenseTotal += amount;
+      }
+
+      dailyMovements.set(
+        provision.dueOn,
+        (dailyMovements.get(provision.dueOn) ?? 0) +
+          this.applyMovement(provision.type, amount),
+      );
+    }
+
+    const lowIncomeDays: string[] = [];
+    let runningBalance = startingBalance;
+    let dayOfCashShort: string | null = null;
+
+    for (
+      let cursor = new Date(start);
+      cursor <= end;
+      cursor.setDate(cursor.getDate() + 1)
+    ) {
+      const dateKey = this.normalizeToDate(cursor);
+      const net = dailyMovements.get(dateKey) ?? 0;
+      runningBalance += net;
+
+      const income = dailyIncome.get(dateKey) ?? 0;
+      if (income <= 0) {
+        lowIncomeDays.push(dateKey);
+      }
+
+      if (!dayOfCashShort && runningBalance < 0) {
+        dayOfCashShort = dateKey;
+      }
+    }
+
+    const netTotal = incomeTotal - expenseTotal;
+    const endingBalance = startingBalance + netTotal;
+
+    const healthStatus = dayOfCashShort
+      ? ClosingHealthStatus.Critical
+      : netTotal < 0
+        ? ClosingHealthStatus.Warning
+        : ClosingHealthStatus.Healthy;
+
+    const existing = await this.closingsRepository.findOne({
+      where: { clientId, periodType: dto.periodType, periodStart, periodEnd },
+    });
+
+    const closing = this.closingsRepository.create({
+      id: existing?.id,
+      clientId,
+      periodType: dto.periodType,
+      periodStart,
+      periodEnd,
+      incomeTotal: incomeTotal.toFixed(2),
+      expenseTotal: expenseTotal.toFixed(2),
+      netTotal: netTotal.toFixed(2),
+      startingBalance: startingBalance.toFixed(2),
+      endingBalance: endingBalance.toFixed(2),
+      dayOfCashShort,
+      lowIncomeDays,
+      lowIncomeDaysCount: lowIncomeDays.length,
+      healthStatus,
+      generatedAt: new Date(),
+      createdByUserId: user.sub,
+    });
+
+    return this.closingsRepository.save(closing);
+  }
+
+  async listClosings(
+    clientId: string,
+    user: JwtPayload,
+    query: ListClosingsQueryDto,
+  ): Promise<Closing[]> {
+    await this.requireClientAccess(clientId, user);
+
+    const where: Record<string, unknown> = { clientId };
+
+    if (query.periodType) {
+      where.periodType = query.periodType;
+    }
+
+    if (query.startDate && query.endDate) {
+      where.periodStart = Between(
+        this.normalizeDate(query.startDate),
+        this.normalizeDate(query.endDate),
+      );
+    } else if (query.startDate) {
+      where.periodStart = MoreThanOrEqual(this.normalizeDate(query.startDate));
+    } else if (query.endDate) {
+      where.periodStart = LessThanOrEqual(this.normalizeDate(query.endDate));
+    }
+
+    return this.closingsRepository.find({
+      where,
+      order: { periodStart: 'DESC' },
+    });
   }
 }
