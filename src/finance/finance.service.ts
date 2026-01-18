@@ -28,6 +28,14 @@ type DailyCashflowItem = {
   balance: number;
 };
 
+type MonthlyCashflowItem = {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+  endingBalance: number;
+};
+
 @Injectable()
 export class FinanceService {
   constructor(
@@ -243,36 +251,71 @@ export class FinanceService {
       order: { recordedAt: 'DESC' },
     });
 
-    let runningBalance = latestBalance
+    const startingBalance = latestBalance
       ? this.parseAmount(latestBalance.amount)
       : 0;
+    let runningBalance = startingBalance;
 
     const dailyMovements = new Map<string, number>();
+    const dailyIncome = new Map<string, number>();
+    const dailyExpense = new Map<string, number>();
 
     for (const entry of entries) {
-      const amount = this.applyMovement(
-        entry.type,
-        this.parseAmount(entry.amount),
-      );
+      const parsedAmount = this.parseAmount(entry.amount);
+      const amount = this.applyMovement(entry.type, parsedAmount);
       dailyMovements.set(
         entry.occurredOn,
         (dailyMovements.get(entry.occurredOn) ?? 0) + amount,
       );
+
+      if (entry.type === MovementType.Income) {
+        dailyIncome.set(
+          entry.occurredOn,
+          (dailyIncome.get(entry.occurredOn) ?? 0) + parsedAmount,
+        );
+      } else {
+        dailyExpense.set(
+          entry.occurredOn,
+          (dailyExpense.get(entry.occurredOn) ?? 0) + parsedAmount,
+        );
+      }
     }
 
     for (const provision of provisions) {
-      const amount = this.applyMovement(
-        provision.type,
-        this.parseAmount(provision.amount),
-      );
+      const parsedAmount = this.parseAmount(provision.amount);
+      const amount = this.applyMovement(provision.type, parsedAmount);
       dailyMovements.set(
         provision.dueOn,
         (dailyMovements.get(provision.dueOn) ?? 0) + amount,
       );
+
+      if (provision.type === MovementType.Income) {
+        dailyIncome.set(
+          provision.dueOn,
+          (dailyIncome.get(provision.dueOn) ?? 0) + parsedAmount,
+        );
+      } else {
+        dailyExpense.set(
+          provision.dueOn,
+          (dailyExpense.get(provision.dueOn) ?? 0) + parsedAmount,
+        );
+      }
     }
 
     const days: DailyCashflowItem[] = [];
+    const monthsMap = new Map<string, MonthlyCashflowItem>();
     let dayOfCashShort: string | null = null;
+
+    let runwayBalance = startingBalance;
+    let runwayDays: number | null = null;
+    let runwayEndsOn: string | null = null;
+
+    if (runwayBalance < 0) {
+      runwayDays = 0;
+      runwayEndsOn = startKey;
+    }
+
+    let dayIndex = 0;
 
     for (
       let cursor = new Date(startDate);
@@ -287,6 +330,33 @@ export class FinanceService {
         dayOfCashShort = dateKey;
       }
 
+      const monthKey = dateKey.slice(0, 7);
+      const income = dailyIncome.get(dateKey) ?? 0;
+      const expense = dailyExpense.get(dateKey) ?? 0;
+      const monthEntry =
+        monthsMap.get(monthKey) ?? {
+          month: monthKey,
+          income: 0,
+          expense: 0,
+          net: 0,
+          endingBalance: runningBalance,
+        };
+
+      monthEntry.income += income;
+      monthEntry.expense += expense;
+      monthEntry.net += net;
+      monthEntry.endingBalance = runningBalance;
+      monthsMap.set(monthKey, monthEntry);
+
+      if (runwayDays === null) {
+        runwayBalance -= expense;
+        dayIndex += 1;
+        if (runwayBalance < 0) {
+          runwayDays = dayIndex;
+          runwayEndsOn = dateKey;
+        }
+      }
+
       days.push({
         date: dateKey,
         net,
@@ -294,16 +364,27 @@ export class FinanceService {
       });
     }
 
+    const monthly = Array.from(monthsMap.values()).sort((a, b) =>
+      a.month.localeCompare(b.month),
+    );
+
+    const runwayMonths =
+      runwayDays !== null ? Number((runwayDays / 30).toFixed(2)) : null;
+
     return {
       clientId,
       startDate: startKey,
       endDate: endKey,
-      startingBalance: latestBalance
-        ? this.parseAmount(latestBalance.amount)
-        : 0,
+      startingBalance,
       endingBalance: runningBalance,
       dayOfCashShort,
+      runway: {
+        days: runwayDays,
+        months: runwayMonths,
+        endsOn: runwayEndsOn,
+      },
       days,
+      months: monthly,
     };
   }
 }
