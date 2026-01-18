@@ -1,98 +1,109 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Fynancee
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Plataforma de visao financeira e contabil para controladorias. O foco e dar clareza
+na tomada de decisao com fluxo de caixa diario/mensal, previsao e fechamento por
+periodo.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Visao do produto
 
-## Description
+- Entrega clareza sobre saldo, projecao e dias criticos.
+- Saldo e sempre liquido em conta.
+- Fluxo considera entradas, saidas e provisoes.
+- Fechamento mensal/trimestral com resumo de saude.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Regras de negocio (base)
 
-## Project setup
+- Entradas e saidas compoem o fluxo.
+- Provisoes entram na previsao do caixa.
+- Dia do furo = primeiro dia em que o saldo projetado fica negativo.
+- Fechamento mensal destaca dias de baixo faturamento.
+- Fechamento trimestral indica saude geral.
+
+## Funcionalidades atuais
+
+- Google OAuth (idToken) + JWT interno.
+- RBAC com papeis de controladoria e cliente.
+- Cadastro de controladoria, clientes e usuarios.
+- Lancamentos financeiros:
+  - entries (receitas/despesas)
+  - provisions (provisoes futuras)
+  - balances (saldo)
+- Cashflow diario e mensal com:
+  - dayOfCashShort
+  - runway (dias/meses sem receita)
+- Fechamento mensal/trimestral com snapshot e status:
+  - healthy, warning, critical
+- Auditoria basica: origem do dado (manual/import) e usuario criador.
+
+## Modelo de acesso
+
+- Tenant = controladoria (base para multi-tenant, mesmo sendo uso interno).
+- Client = empresa atendida.
+- User pode ser controladoria ou cliente.
+- Roles:
+  - Controladoria: owner, admin, analyst
+  - Cliente: client_admin, client_viewer
+
+## Rotas principais (resumo)
+
+- Auth:
+  - POST /v1/auth/google
+  - GET /v1/auth/me
+- Tenants/Users:
+  - POST /v1/tenants
+  - GET /v1/tenants/:tenantId
+  - POST /v1/tenants/:tenantId/users
+- Clients:
+  - POST /v1/tenants/:tenantId/clients
+  - GET /v1/tenants/:tenantId/clients/:clientId
+- Finance:
+  - POST /v1/clients/:clientId/entries
+  - POST /v1/clients/:clientId/provisions
+  - POST /v1/clients/:clientId/balances
+  - GET /v1/clients/:clientId/cashflow
+  - POST /v1/clients/:clientId/closings
+  - GET /v1/clients/:clientId/closings
+
+## Como rodar
 
 ```bash
-$ npm install
+npm install
 ```
 
-## Compile and run the project
+Crie um arquivo `.env` baseado em `.env.example` e ajuste o banco:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=1234
+DB_NAME=postgres
+JWT_SECRET=change-me
+JWT_EXPIRES_IN=1d
+GOOGLE_CLIENT_ID=your-google-client-id
 ```
 
-## Run tests
+Rode migrations e o bootstrap do owner:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run migration:run
+BOOTSTRAP_OWNER_EMAIL=owner@exemplo.com npm run seed:bootstrap
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Suba o projeto:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Scripts uteis
 
-## Resources
+- `npm run migration:generate -- src/migrations/Nome`
+- `npm run migration:run`
+- `npm run seed:bootstrap`
 
-Check out a few resources that may come in handy when working with NestJS:
+## Roadmap (curto)
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Importador CSV (bootstrap de dados).
+- Indicadores de estoque/reservas.
+- Fechamento anual e insights executivos.
