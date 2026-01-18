@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import {
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';
+import { parse } from 'csv-parse/sync';
 import { UserType } from '../common/enums/access.enum';
 import { Client } from '../clients/entities/client.entity';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -20,15 +22,20 @@ import { CreateProvisionDto } from './dto/create-provision.dto';
 import { CreateReserveDto } from './dto/create-reserve.dto';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { ListImportRowsQueryDto } from './dto/list-import-rows-query.dto';
+import { ListImportsQueryDto } from './dto/list-imports-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { ClosingHealthStatus } from './enums/closing-health.enum';
 import { ClosingPeriodType } from './enums/closing-period.enum';
+import { ImportBatchStatus, ImportRowStatus } from './enums/import-status.enum';
 import { MovementType } from './enums/movement-type.enum';
 import { ReserveType } from './enums/reserve-type.enum';
 import { RecordSource } from './enums/record-source.enum';
 import { Balance } from './entities/balance.entity';
 import { Closing } from './entities/closing.entity';
 import { Entry } from './entities/entry.entity';
+import { ImportBatch } from './entities/import-batch.entity';
+import { ImportRow } from './entities/import-row.entity';
 import { Provision } from './entities/provision.entity';
 import { Reserve } from './entities/reserve.entity';
 import { Stock } from './entities/stock.entity';
@@ -62,6 +69,10 @@ export class FinanceService {
     private readonly reservesRepository: Repository<Reserve>,
     @InjectRepository(Stock)
     private readonly stocksRepository: Repository<Stock>,
+    @InjectRepository(ImportBatch)
+    private readonly importBatchesRepository: Repository<ImportBatch>,
+    @InjectRepository(ImportRow)
+    private readonly importRowsRepository: Repository<ImportRow>,
     @InjectRepository(Client)
     private readonly clientsRepository: Repository<Client>,
   ) {}
@@ -105,6 +116,13 @@ export class FinanceService {
 
   private applyMovement(type: MovementType, amount: number): number {
     return type === MovementType.Income ? amount : -amount;
+  }
+
+  private ensureCsvFile(file: Express.Multer.File) {
+    const fileName = file.originalname?.toLowerCase();
+    if (!fileName || !fileName.endsWith('.csv')) {
+      throw new BadRequestException('Only CSV files are supported');
+    }
   }
 
   private normalizeToDate(input: Date): string {
@@ -418,6 +436,150 @@ export class FinanceService {
       },
       totalAssets: stockValue + reservesTotal,
     };
+  }
+
+  async createCsvImport(
+    clientId: string,
+    user: JwtPayload,
+    file: Express.Multer.File,
+  ) {
+    await this.requireClientAccess(clientId, user);
+
+    if (!file) {
+      throw new BadRequestException('CSV file is required');
+    }
+
+    this.ensureCsvFile(file);
+
+    const maxRows = Number(process.env.IMPORT_MAX_ROWS ?? 5000);
+    const records = parse(file.buffer, {
+      columns: true,
+      skip_empty_lines: true,
+      bom: true,
+      trim: true,
+    }) as Record<string, string>[];
+
+    if (records.length === 0) {
+      throw new BadRequestException('CSV has no data rows');
+    }
+
+    if (records.length > maxRows) {
+      throw new BadRequestException('CSV exceeds row limit');
+    }
+
+    const headers = Object.keys(records[0] ?? {});
+
+    const batch = this.importBatchesRepository.create({
+      clientId,
+      fileName: file.originalname,
+      headers,
+      rowCount: records.length,
+      errorCount: 0,
+      status: ImportBatchStatus.Uploaded,
+      createdByUserId: user.sub,
+    });
+
+    const savedBatch = await this.importBatchesRepository.save(batch);
+
+    const rows = records.map((record, index) => ({
+      batchId: savedBatch.id,
+      rowIndex: index + 1,
+      data: record,
+      status: ImportRowStatus.Pending,
+      errors: [],
+    }));
+
+    if (rows.length > 0) {
+      await this.importRowsRepository.insert(rows);
+    }
+
+    return {
+      batchId: savedBatch.id,
+      rowCount: savedBatch.rowCount,
+      headers: savedBatch.headers,
+      status: savedBatch.status,
+    };
+  }
+
+  async listImports(
+    clientId: string,
+    user: JwtPayload,
+    query: ListImportsQueryDto,
+  ) {
+    await this.requireClientAccess(clientId, user);
+
+    const where: Record<string, unknown> = { clientId };
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+
+    const [items, total] = await this.importBatchesRepository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+
+    return { total, items };
+  }
+
+  private async getImportBatch(
+    clientId: string,
+    batchId: string,
+  ): Promise<ImportBatch> {
+    const batch = await this.importBatchesRepository.findOne({
+      where: { id: batchId, clientId },
+    });
+
+    if (!batch) {
+      throw new NotFoundException('Import batch not found');
+    }
+
+    return batch;
+  }
+
+  async getImportDetails(
+    clientId: string,
+    user: JwtPayload,
+    batchId: string,
+  ) {
+    await this.requireClientAccess(clientId, user);
+
+    const batch = await this.getImportBatch(clientId, batchId);
+
+    const sampleRows = await this.importRowsRepository.find({
+      where: { batchId },
+      order: { rowIndex: 'ASC' },
+      take: 10,
+    });
+
+    return { batch, sampleRows };
+  }
+
+  async listImportRows(
+    clientId: string,
+    user: JwtPayload,
+    batchId: string,
+    query: ListImportRowsQueryDto,
+  ) {
+    await this.requireClientAccess(clientId, user);
+    await this.getImportBatch(clientId, batchId);
+
+    const limit = query.limit ?? 100;
+    const offset = query.offset ?? 0;
+
+    const [items, total] = await this.importRowsRepository.findAndCount({
+      where: { batchId },
+      order: { rowIndex: 'ASC' },
+      take: limit,
+      skip: offset,
+    });
+
+    return { total, items };
   }
 
   async getCashflow(

@@ -2,13 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { ClientRole, TenantRole, UserType } from '../common/enums/access.enum';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -24,6 +29,8 @@ import { CreateProvisionDto } from './dto/create-provision.dto';
 import { CreateReserveDto } from './dto/create-reserve.dto';
 import { CreateStockDto } from './dto/create-stock.dto';
 import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { ListImportRowsQueryDto } from './dto/list-import-rows-query.dto';
+import { ListImportsQueryDto } from './dto/list-imports-query.dto';
 import { ListClosingsQueryDto } from './dto/list-closings-query.dto';
 import { FinanceService } from './finance.service';
 
@@ -195,6 +202,81 @@ export class FinanceController {
     @Req() req: Request & { user: JwtPayload },
   ) {
     return this.financeService.getIndicators(clientId, req.user);
+  }
+
+  @Post('imports/csv')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5_000_000 } }))
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+  )
+  createCsvImport(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 5_000_000 })],
+      }),
+    )
+    file: Express.Multer.File,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.createCsvImport(clientId, req.user, file);
+  }
+
+  @Get('imports')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  listImports(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Query() query: ListImportsQueryDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.listImports(clientId, req.user, query);
+  }
+
+  @Get('imports/:batchId')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  getImportDetails(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.getImportDetails(clientId, req.user, batchId);
+  }
+
+  @Get('imports/:batchId/rows')
+  @Roles(
+    TenantRole.Owner,
+    TenantRole.Admin,
+    TenantRole.Analyst,
+    ClientRole.Admin,
+    ClientRole.Viewer,
+  )
+  listImportRows(
+    @Param('clientId', ParseUUIDPipe) clientId: string,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Query() query: ListImportRowsQueryDto,
+    @Req() req: Request & { user: JwtPayload },
+  ) {
+    return this.financeService.listImportRows(
+      clientId,
+      req.user,
+      batchId,
+      query,
+    );
   }
 
   @Get('cashflow')
