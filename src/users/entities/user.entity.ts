@@ -20,6 +20,9 @@ export class User extends AppBaseEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   oauthSubject?: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
+  passwordHash?: string | null;
+
   @Column({ type: 'enum', enum: UserType })
   type: UserType;
 

@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 import { TenantRole } from '../../common/enums/access.enum';
 
@@ -25,4 +26,10 @@ export class CreateTenantUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(8)
+  @MaxLength(128)
+  password?: string;
 }

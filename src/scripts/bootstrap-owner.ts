@@ -1,5 +1,6 @@
 import { AppDataSource } from '../data-source';
 import { TenantRole, UserType } from '../common/enums/access.enum';
+import { hashPassword } from '../common/utils/password.util';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { TenantUser } from '../tenants/entities/tenant-user.entity';
 import { User } from '../users/entities/user.entity';
@@ -9,6 +10,7 @@ async function bootstrap() {
     process.env.BOOTSTRAP_TENANT_NAME ?? 'Primary Controladoria';
   const ownerName = process.env.BOOTSTRAP_OWNER_NAME ?? 'Owner';
   const ownerEmail = process.env.BOOTSTRAP_OWNER_EMAIL;
+  const ownerPassword = process.env.BOOTSTRAP_OWNER_PASSWORD;
 
   if (!ownerEmail) {
     throw new Error('BOOTSTRAP_OWNER_EMAIL is required');
@@ -33,15 +35,22 @@ async function bootstrap() {
     throw new Error('User type mismatch for bootstrap owner');
   }
 
+  const passwordHash = ownerPassword
+    ? await hashPassword(ownerPassword)
+    : undefined;
+
   if (!user) {
     user = userRepo.create({
       name: ownerName,
       email: ownerEmail,
       type: UserType.Controller,
-      oauthProvider: 'google',
+      oauthProvider: passwordHash ? 'local' : 'google',
+      passwordHash: passwordHash ?? null,
       isActive: true,
     });
     user = await userRepo.save(user);
+  } else if (passwordHash) {
+    await userRepo.update(user.id, { passwordHash });
   }
 
   let membership = await tenantUserRepo.findOne({

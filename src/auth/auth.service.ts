@@ -9,10 +9,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { OAuth2Client } from 'google-auth-library';
 import { Repository } from 'typeorm';
 import { ClientRole, TenantRole, UserType } from '../common/enums/access.enum';
+import { verifyPassword } from '../common/utils/password.util';
 import { ClientUser } from '../clients/entities/client-user.entity';
 import { TenantUser } from '../tenants/entities/tenant-user.entity';
 import { User } from '../users/entities/user.entity';
 import { GoogleAuthDto } from './dto/google-auth.dto';
+import { PasswordAuthDto } from './dto/password-auth.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
@@ -62,10 +64,72 @@ export class AuthService {
       throw new UnauthorizedException('OAuth subject mismatch');
     }
 
-    let tenantId: string | undefined;
-    let clientId: string | undefined;
-    let role: TenantRole | ClientRole | undefined;
+    const updates: Partial<User> = {
+      lastLoginAt: new Date(),
+    };
 
+    if (!user.oauthSubject) {
+      updates.oauthSubject = payload.sub ?? null;
+    }
+
+    if (!user.name && payload.name) {
+      updates.name = payload.name;
+    }
+
+    await this.usersRepository.update(user.id, updates);
+
+    return this.buildAuthResponse({ ...user, ...updates });
+  }
+
+  async signInWithPassword(dto: PasswordAuthDto) {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.email = :email', { email: dto.email })
+      .getOne();
+
+    if (!user || !user.isActive || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isValid = await verifyPassword(dto.password, user.passwordHash);
+
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.usersRepository.update(user.id, { lastLoginAt: new Date() });
+
+    return this.buildAuthResponse(user);
+  }
+
+  async getProfile(payload: JwtPayload) {
+    const user = await this.usersRepository.findOne({
+      where: { id: payload.sub },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        type: user.type,
+      },
+      tenantId: payload.tenantId,
+      clientId: payload.clientId,
+      role: payload.role,
+    };
+  }
+
+  private async resolveMembership(user: User): Promise<{
+    tenantId?: string;
+    clientId?: string;
+    role?: TenantRole | ClientRole;
+  }> {
     if (user.type === UserType.Controller) {
       const membership = await this.tenantUsersRepository.findOne({
         where: { userId: user.id, isActive: true },
@@ -75,30 +139,28 @@ export class AuthService {
         throw new UnauthorizedException('Tenant membership not found');
       }
 
-      tenantId = membership.tenantId;
-      role = membership.role;
-    } else {
-      const membership = await this.clientUsersRepository.findOne({
-        where: { userId: user.id, isActive: true },
-      });
-
-      if (!membership) {
-        throw new UnauthorizedException('Client membership not found');
-      }
-
-      clientId = membership.clientId;
-      role = membership.role;
+      return {
+        tenantId: membership.tenantId,
+        role: membership.role,
+      };
     }
 
-    user.lastLoginAt = new Date();
-    if (!user.oauthSubject) {
-      user.oauthSubject = payload.sub ?? null;
-    }
-    if (!user.name && payload.name) {
-      user.name = payload.name;
+    const membership = await this.clientUsersRepository.findOne({
+      where: { userId: user.id, isActive: true },
+    });
+
+    if (!membership) {
+      throw new UnauthorizedException('Client membership not found');
     }
 
-    await this.usersRepository.save(user);
+    return {
+      clientId: membership.clientId,
+      role: membership.role,
+    };
+  }
+
+  private async buildAuthResponse(user: User) {
+    const { tenantId, clientId, role } = await this.resolveMembership(user);
 
     const jwtPayload: JwtPayload = {
       sub: user.id,
@@ -121,28 +183,6 @@ export class AuthService {
       tenantId,
       clientId,
       role,
-    };
-  }
-
-  async getProfile(payload: JwtPayload) {
-    const user = await this.usersRepository.findOne({
-      where: { id: payload.sub },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        type: user.type,
-      },
-      tenantId: payload.tenantId,
-      clientId: payload.clientId,
-      role: payload.role,
     };
   }
 }

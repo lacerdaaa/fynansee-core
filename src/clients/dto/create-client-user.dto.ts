@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 import { ClientRole } from '../../common/enums/access.enum';
 
@@ -25,4 +26,10 @@ export class CreateClientUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(8)
+  @MaxLength(128)
+  password?: string;
 }

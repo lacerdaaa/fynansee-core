@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { GoogleAuthDto } from './dto/google-auth.dto';
+import { PasswordAuthDto } from './dto/password-auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthService } from './auth.service';
@@ -12,6 +13,11 @@ export class AuthController {
   @Post('google')
   signInWithGoogle(@Body() dto: GoogleAuthDto) {
     return this.authService.signInWithGoogle(dto);
+  }
+
+  @Post('login')
+  signInWithPassword(@Body() dto: PasswordAuthDto) {
+    return this.authService.signInWithPassword(dto);
   }
 
   @UseGuards(JwtAuthGuard)

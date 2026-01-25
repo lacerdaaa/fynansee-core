@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { hashPassword } from '../common/utils/password.util';
 import { UserType } from '../common/enums/access.enum';
 import { User } from '../users/entities/user.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -84,6 +85,10 @@ export class TenantsService {
       where: { email: dto.email },
     });
 
+    const passwordHash = dto.password
+      ? await hashPassword(dto.password)
+      : undefined;
+
     let user = existingUser;
 
     if (user) {
@@ -102,12 +107,17 @@ export class TenantsService {
       if (existingMembership && existingMembership.tenantId !== tenantId) {
         throw new BadRequestException('User already belongs to another tenant');
       }
+
+      if (passwordHash) {
+        await this.usersRepository.update(user.id, { passwordHash });
+      }
     } else {
       user = this.usersRepository.create({
         name: dto.name,
         email: dto.email,
         type: UserType.Controller,
-        oauthProvider: 'google',
+        oauthProvider: passwordHash ? 'local' : 'google',
+        passwordHash: passwordHash ?? null,
       });
 
       user = await this.usersRepository.save(user);
