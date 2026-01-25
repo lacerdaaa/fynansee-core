@@ -18,7 +18,7 @@ Regras de negócio (base)
 
 Papéis e acesso (RBAC)
 ----------------------
-- Autenticação: Google OAuth + JWT.
+- Autenticação: Google OAuth + login com e-mail/senha.
 - RBAC por tipo e função.
   - UserType: controller | client
   - TenantRole: owner | admin | analyst
@@ -82,6 +82,7 @@ Veja `.env.example` para copiar e ajustar. Principais variáveis:
 - `BOOTSTRAP_TENANT_NAME` - Nome do tenant inicial
 - `BOOTSTRAP_OWNER_NAME` - Nome do owner inicial
 - `BOOTSTRAP_OWNER_EMAIL` - E-mail do owner inicial
+- `BOOTSTRAP_OWNER_PASSWORD` - Senha do owner inicial (opcional)
 - `RABBITMQ_URL` - URL do RabbitMQ (ex: amqp://localhost)
 - `IMPORT_QUEUE_NAME` - Nome da fila de importação
 - `IMPORT_BATCH_SIZE` - Lote de inserção de linhas
@@ -105,6 +106,7 @@ GOOGLE_CLIENT_ID=your-google-client-id
 BOOTSTRAP_TENANT_NAME=Primary Controladoria
 BOOTSTRAP_OWNER_NAME=Owner
 BOOTSTRAP_OWNER_EMAIL=owner@example.com
+BOOTSTRAP_OWNER_PASSWORD=change-me
 RABBITMQ_URL=amqp://localhost
 IMPORT_QUEUE_NAME=imports.csv
 IMPORT_BATCH_SIZE=1000
