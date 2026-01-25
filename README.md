@@ -24,6 +24,12 @@ Papéis e acesso (RBAC)
   - TenantRole: owner | admin | analyst
   - ClientRole: client_admin | client_viewer
 
+Convites e recuperação de senha
+-------------------------------
+- Convites para usuários de controladoria e clientes com token expirável.
+- Aceite de convite cria senha e ativa a associação.
+- Reset de senha via token (retornado pela API neste estágio).
+
 Domínio e entidades principais
 ------------------------------
 - Tenant: a controladoria (topo da hierarquia).
