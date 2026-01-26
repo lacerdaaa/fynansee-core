@@ -10,13 +10,14 @@ import { USER_TYPES_KEY } from '../decorators/user-types.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { UserType } from '../../common/enums/access.enum';
+import { resolveTenantId, TenantRequest } from '../../common/utils/tenant.util';
 
 @Injectable()
 export class AccessGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector) { }
 
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<TenantRequest>();
     const user = req.user as JwtPayload | undefined;
 
     if (!user) {
@@ -41,10 +42,31 @@ export class AccessGuard implements CanActivate {
       throw new ForbiddenException('User role not allowed');
     }
 
-    const { tenantId, clientId } = req.params ?? {};
+    const { clientId } = req.params ?? {};
+    const {
+      headerTenantId,
+      paramTenantId,
+      userTenantId,
+      resolvedTenantId,
+    } = resolveTenantId(req);
 
-    if (tenantId && user.tenantId && tenantId !== user.tenantId) {
+    if (headerTenantId && paramTenantId && headerTenantId !== paramTenantId) {
       throw new ForbiddenException('Tenant scope mismatch');
+    }
+
+    if (headerTenantId && userTenantId && headerTenantId !== userTenantId) {
+      throw new ForbiddenException('Tenant scope mismatch');
+    }
+
+    if (paramTenantId && userTenantId && paramTenantId !== userTenantId) {
+      throw new ForbiddenException('Tenant scope mismatch');
+    }
+
+    if (resolvedTenantId) {
+      req.tenantId = resolvedTenantId;
+      if (!user.tenantId && user.type === UserType.Controller) {
+        user.tenantId = resolvedTenantId;
+      }
     }
 
     if (clientId && user.clientId && clientId !== user.clientId) {

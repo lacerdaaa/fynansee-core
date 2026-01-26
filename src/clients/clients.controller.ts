@@ -13,6 +13,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserTypes } from '../auth/decorators/user-types.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
+import { TenantId } from '../common/decorators/tenant-id.decorator';
 import { CreateClientDto } from './dto/create-client.dto';
 import { CreateClientUserDto } from './dto/create-client-user.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -26,9 +27,9 @@ export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Post()
-  @Roles(TenantRole.Owner, TenantRole.Admin)
+  @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   create(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Body() dto: CreateClientDto,
   ) {
     return this.clientsService.createClient(tenantId, dto);
@@ -36,14 +37,14 @@ export class ClientsController {
 
   @Get()
   @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
-  findAll(@Param('tenantId', ParseUUIDPipe) tenantId: string) {
+  findAll(@TenantId(new ParseUUIDPipe()) tenantId: string) {
     return this.clientsService.findAll(tenantId);
   }
 
   @Get(':clientId')
   @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   findOne(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
   ) {
     return this.clientsService.findOne(tenantId, clientId);
@@ -52,7 +53,7 @@ export class ClientsController {
   @Patch(':clientId')
   @Roles(TenantRole.Owner, TenantRole.Admin)
   update(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @Body() dto: UpdateClientDto,
   ) {
@@ -62,7 +63,7 @@ export class ClientsController {
   @Get(':clientId/users')
   @Roles(TenantRole.Owner, TenantRole.Admin, TenantRole.Analyst)
   listUsers(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
   ) {
     return this.clientsService.listClientUsers(tenantId, clientId);
@@ -71,7 +72,7 @@ export class ClientsController {
   @Post(':clientId/users')
   @Roles(TenantRole.Owner, TenantRole.Admin)
   addUser(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @Body() dto: CreateClientUserDto,
   ) {
@@ -81,7 +82,7 @@ export class ClientsController {
   @Patch(':clientId/users/:userId')
   @Roles(TenantRole.Owner, TenantRole.Admin)
   updateUser(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @TenantId(new ParseUUIDPipe()) tenantId: string,
     @Param('clientId', ParseUUIDPipe) clientId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: UpdateClientUserDto,
