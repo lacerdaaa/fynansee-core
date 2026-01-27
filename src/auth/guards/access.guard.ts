@@ -11,6 +11,7 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { UserType } from '../../common/enums/access.enum';
 import { resolveTenantId, TenantRequest } from '../../common/utils/tenant.util';
+import { resolveClientId } from '../../common/utils/client.util';
 
 @Injectable()
 export class AccessGuard implements CanActivate {
@@ -42,13 +43,18 @@ export class AccessGuard implements CanActivate {
       throw new ForbiddenException('User role not allowed');
     }
 
-    const { clientId } = req.params ?? {};
     const {
       headerTenantId,
       paramTenantId,
       userTenantId,
       resolvedTenantId,
     } = resolveTenantId(req);
+    const {
+      headerClientId,
+      paramClientId,
+      userClientId,
+      resolvedClientId,
+    } = resolveClientId(req);
 
     if (headerTenantId && paramTenantId && headerTenantId !== paramTenantId) {
       throw new ForbiddenException('Tenant scope mismatch');
@@ -69,8 +75,23 @@ export class AccessGuard implements CanActivate {
       }
     }
 
-    if (clientId && user.clientId && clientId !== user.clientId) {
+    if (headerClientId && paramClientId && headerClientId !== paramClientId) {
       throw new ForbiddenException('Client scope mismatch');
+    }
+
+    if (headerClientId && userClientId && headerClientId !== userClientId) {
+      throw new ForbiddenException('Client scope mismatch');
+    }
+
+    if (paramClientId && userClientId && paramClientId !== userClientId) {
+      throw new ForbiddenException('Client scope mismatch');
+    }
+
+    if (resolvedClientId) {
+      req.clientId = resolvedClientId;
+      if (!user.clientId && user.type === UserType.Controller) {
+        user.clientId = resolvedClientId;
+      }
     }
 
     return true;

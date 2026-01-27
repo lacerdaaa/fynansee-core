@@ -5,6 +5,7 @@ export const TENANT_HEADER = 'x-tenant-id';
 
 export type TenantRequest = Request & {
   tenantId?: string;
+  clientId?: string;
   user?: JwtPayload;
 };
 
